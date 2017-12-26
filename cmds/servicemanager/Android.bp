@@ -32,6 +32,11 @@ cc_binary {
         "binder.c",
     ],
     shared_libs: ["libcutils", "libselinux"],
+    product_variables: {
+        deviceIsContainer: {
+            cflags: ["-DDISABLE_SELINUX"],
+        },
+    },
     init_rc: ["servicemanager.rc"],
 }
 
@@ -46,6 +51,11 @@ cc_binary {
     cflags: [
         "-DVENDORSERVICEMANAGER=1",
     ],
+    product_variables: {
+        deviceIsContainer: {
+            cflags: ["-DDISABLE_SELINUX"],
+        },
+    },
     shared_libs: ["libcutils"],
     static_libs: ["libselinux"],
     init_rc: ["vndservicemanager.rc"],
