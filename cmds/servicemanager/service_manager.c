@@ -6,14 +6,17 @@
 #include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <string.h>
 
 #include <cutils/multiuser.h>
 
 #include <private/android_filesystem_config.h>
 
+#if !defined(DISABLE_SELINUX)
 #include <selinux/android.h>
 #include <selinux/avc.h>
+#endif
 
 #include "binder.h"
 
@@ -59,11 +62,14 @@ int str16eq(const uint16_t *a, const char *b)
     return 1;
 }
 
+#if !defined(DISABLE_SELINUX)
 static char *service_manager_context;
 static struct selabel_handle* sehandle;
+#endif
 
 static bool check_mac_perms(pid_t spid, uid_t uid, const char *tctx, const char *perm, const char *name)
 {
+#if !defined(DISABLE_SELINUX)
     char *sctx = NULL;
     const char *class = "service_manager";
     bool allowed;
@@ -83,11 +89,23 @@ static bool check_mac_perms(pid_t spid, uid_t uid, const char *tctx, const char 
 
     freecon(sctx);
     return allowed;
+#else
+    (void) spid;
+    (void) uid;
+    (void) tctx;
+    (void) perm;
+    (void) name;
+    return true;
+#endif /* DISABLE_SELINUX */
 }
 
 static bool check_mac_perms_from_getcon(pid_t spid, uid_t uid, const char *perm)
 {
+#if !defined(DISABLE_SELINUX)
     return check_mac_perms(spid, uid, service_manager_context, perm, NULL);
+#else
+    return check_mac_perms(spid, uid, NULL, perm, NULL);
+#endif
 }
 
 static bool check_mac_perms_from_lookup(pid_t spid, uid_t uid, const char *perm, const char *name)
@@ -95,6 +113,7 @@ static bool check_mac_perms_from_lookup(pid_t spid, uid_t uid, const char *perm,
     bool allowed;
     char *tctx = NULL;
 
+#if !defined(DISABLE_SELINUX)
     if (!sehandle) {
         ALOGE("SELinux: Failed to find sehandle. Aborting service_manager.\n");
         abort();
@@ -104,9 +123,12 @@ static bool check_mac_perms_from_lookup(pid_t spid, uid_t uid, const char *perm,
         ALOGE("SELinux: No match for %s in service_contexts.\n", name);
         return false;
     }
+#endif
 
     allowed = check_mac_perms(spid, uid, tctx, perm, name);
+#if !defined(DISABLE_SELINUX)
     freecon(tctx);
+#endif
     return allowed;
 }
 
@@ -286,6 +308,7 @@ int svcmgr_handler(struct binder_state *bs,
         return -1;
     }
 
+#if !defined(DISABLE_SELINUX)
     if (sehandle && selinux_status_updated() > 0) {
         struct selabel_handle *tmp_sehandle = selinux_android_service_context_handle();
         if (tmp_sehandle) {
@@ -293,6 +316,7 @@ int svcmgr_handler(struct binder_state *bs,
             sehandle = tmp_sehandle;
         }
     }
+#endif
 
     switch(txn->code) {
     case SVC_MGR_GET_SERVICE:
@@ -346,6 +370,7 @@ int svcmgr_handler(struct binder_state *bs,
 }
 
 
+#if !defined(DISABLE_SELINUX)
 static int audit_callback(void *data, __unused security_class_t cls, char *buf, size_t len)
 {
     struct audit_data *ad = (struct audit_data *)data;
@@ -358,11 +383,14 @@ static int audit_callback(void *data, __unused security_class_t cls, char *buf, 
     snprintf(buf, len, "service=%s pid=%d uid=%d", ad->name, ad->pid, ad->uid);
     return 0;
 }
+#endif
 
 int main(int argc, char** argv)
 {
     struct binder_state *bs;
+#if !defined(DISABLE_SELINUX)
     union selinux_callback cb;
+#endif
     char *driver;
 
     if (argc > 1) {
@@ -389,6 +417,7 @@ int main(int argc, char** argv)
         return -1;
     }
 
+#if !defined(DISABLE_SELINUX)
     cb.func_audit = audit_callback;
     selinux_set_callback(SELINUX_CB_AUDIT, cb);
     cb.func_log = selinux_log_callback;
@@ -410,6 +439,7 @@ int main(int argc, char** argv)
         ALOGE("SELinux: Failed to acquire service_manager context. Aborting.\n");
         abort();
     }
+#endif /* DISABLE_SELINUX */
 
 
     binder_loop(bs, svcmgr_handler);
